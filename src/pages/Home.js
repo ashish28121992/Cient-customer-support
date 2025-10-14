@@ -32,7 +32,6 @@ function Home() {
       redirect: 'manual'
     })
       .then((res) => {
-        console.log('API Response:', res.status, res.type);
         if (res.type === 'opaqueredirect' || res.status === 0 || res.status === 302) {
           return res.headers.get('Location') || res.headers.get('location');
         }
@@ -40,18 +39,15 @@ function Home() {
       })
       .then((waUrl) => {
         if (waUrl) {
-          console.log('Opening WhatsApp URL:', waUrl);
           window.open(waUrl, '_blank', 'noopener,noreferrer');
         } else {
           const fallbackUrl = `https://wa.me/${number}?text=${encodeURIComponent(text)}`;
-          console.log('Using fallback URL:', fallbackUrl);
           window.open(fallbackUrl, '_blank', 'noopener,noreferrer');
         }
       })
       .catch((err) => {
-        console.error('WhatsApp API error:', err);
+        // Silent error handling for production
         const fallbackUrl = `https://wa.me/${number}?text=${encodeURIComponent(text)}`;
-        console.log('Error - using fallback URL:', fallbackUrl);
         window.open(fallbackUrl, '_blank', 'noopener,noreferrer');
       })
       .finally(() => setSending(false));
@@ -69,13 +65,11 @@ function Home() {
     try {
       // Use /search endpoint (not /search/redirect) which returns JSON
       const url = `${API_BASE_URL}/search?userId=${encodeURIComponent(userIdInput.trim())}`;
-      console.log('Making GET request to:', url);
       
       const response = await axios.get(url, {
-        withCredentials: true
+        withCredentials: true,
+        timeout: 10000 // 10 second timeout for production
       });
-
-      console.log('Response:', response.data);
       
       if (response.data.success && response.data.data) {
         // Show modal with data
@@ -86,14 +80,19 @@ function Home() {
         setSearchError(response.data.message || 'User not found');
       }
     } catch (err) {
-      console.error('Search error:', err);
-      
-      if (err.response && err.response.status === 404) {
+      // Enhanced error handling for production
+      if (err.code === 'ECONNABORTED' || err.message.includes('timeout')) {
+        setSearchError('Request timed out. Please try again.');
+      } else if (err.response && err.response.status === 404) {
         setSearchError('User not found');
+      } else if (err.response && err.response.status === 500) {
+        setSearchError('Server error. Please try again later.');
       } else if (err.response && err.response.data) {
         setSearchError(err.response.data.message || 'Something went wrong');
+      } else if (err.code === 'NETWORK_ERROR' || !navigator.onLine) {
+        setSearchError('No internet connection. Please check your network.');
       } else {
-        setSearchError('Failed to connect to server. Make sure backend is running on port 4000');
+        setSearchError('Unable to connect to server. Please try again later.');
       }
     } finally {
       setSearching(false);
